@@ -1,12 +1,16 @@
-from agents.verifier import verify_claim_support
+from agents.verifier import (
+    verify_claim_support,
+    compute_trust_score
+)
 
 claim = """
-Transformers reduce recurrence costs compared to RNNs.
+Transformers reduce recurrence costs
+compared to recurrent networks.
 """
 
 abstract = """
-The Transformer removes recurrence and allows
-significantly more parallelization.
+The Transformer removes recurrence and
+allows significantly greater parallelization.
 """
 
 result = verify_claim_support(
@@ -14,4 +18,7 @@ result = verify_claim_support(
     abstract
 )
 
+score = compute_trust_score(result)
+
 print(result)
+print("Trust Score:", score)
