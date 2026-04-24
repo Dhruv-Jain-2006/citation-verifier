@@ -13,6 +13,7 @@ from agents.parser import extract_critical_claims
 from agents.retriever import screen_citations, fetch_deep_abstracts
 from agents.triage import select_top_risky_claims
 from agents.verifier import evaluate_claims
+from agents.critic import execute_critic_override
 
 # ==========================================
 # 1. NODE SKELETONS (The "Brains" of the pipeline)
@@ -102,11 +103,18 @@ def critic_review(state: GraphState) -> dict:
     Second-pass override layer. Only runs if conditional routing flags weak claims.
     Updates: `critic_overrides`.
     """
+    claims = state.get("triaged_claims", [])
+    evidence = state.get("evidence", [])
     verifications = state.get("verifications", [])
-    # TODO: Invoke gemini-3.1-pro to audit the failing/weak verifications
     
-    print("-> Node [critic_review]: Performing 3.1 Pro override review...")
-    return {"critic_overrides": []}
+    print(f"-> Node [critic_review]: Performing rigorous override review on Verifier outputs...")
+    
+    overrides = execute_critic_override(claims, evidence, verifications)
+    
+    if overrides:
+        print(f"   => Critic generated {len(overrides)} override(s).")
+        
+    return {"critic_overrides": overrides}
 
 def trust_scorer(state: GraphState) -> dict:
     """
