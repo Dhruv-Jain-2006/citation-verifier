@@ -41,6 +41,33 @@ class RetrievedEvidence(BaseModel):
         description="Retrieved paper authors."
     )
 
+class BroadScreeningResult(BaseModel):
+    """Output from the lightweight Broad Screening node for ALL citations."""
+    claim_id: str = Field(
+        description="The ID of the claim referencing this citation."
+    )
+    exists: bool = Field(
+        description="True if the academic DB found a matching paper."
+    )
+    retracted: bool = Field(
+        description="True if the academic DB explicitly flags this paper as retracted."
+    )
+    suspicious: bool = Field(
+        description="True if the reference seems completely unresolvable or hallucinated."
+    )
+    api_title_match: Optional[str] = Field(
+        default=None, 
+        description="The title as recovered from the database."
+    )
+    api_citation_count: Optional[int] = Field(
+        default=0, 
+        description="Total citations the retrieved paper has."
+    )
+    risk_score: int = Field(
+        default=0, 
+        description="Calculated heuristic risk integer (0-100). Higher is riskier."
+    )
+
 class VerificationScore(BaseModel):
     """Output from the Verifier/Critic Nodes natively returned by Gemini."""
     claim_id: str = Field(
