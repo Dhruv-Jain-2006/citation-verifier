@@ -8,6 +8,8 @@ from utils.schemas import (
     VerificationScore,
     IntegrityReport
 )
+from tools.pdf_extract import extract_pdf_data
+from agents.parser import extract_critical_claims
 
 # ==========================================
 # 1. NODE SKELETONS (The "Brains" of the pipeline)
@@ -20,12 +22,31 @@ def parse_pdf(state: GraphState) -> dict:
     Extracts the most critical claims and their reference contexts.
     Updates: `claims` and (optionally) `errors`.
     """
-    pdf_text = state.get("pdf_text", "")
-    # TODO: Implement PyMuPDF regex logic
-    # TODO: Call gemini-2.5-flash with structured output to get claims
+    pdf_path = state.get("pdf_path", "")
+    print(f"-> Node [parse_pdf]: Extracting claims from {pdf_path}...")
     
-    print("-> Node [parse_pdf]: Extracting claims...")
-    return {"claims": []} # Returns empty list structure for now
+    if not pdf_path:
+        return {"errors": ["No PDF path provided."]}
+        
+    try:
+        # Step 1: Deterministic PyMuPDF extraction
+        extracted_data = extract_pdf_data(pdf_path)
+        citation_paragraphs = extracted_data.get("citation_paragraphs", [])
+        references_section = extracted_data.get("references_section", "")
+        
+        # Step 2: Gemini structured claim generation
+        if not citation_paragraphs:
+            return {
+                "errors":["No citation paragraphs extracted."]
+            }
+        claims = extract_critical_claims(citation_paragraphs, references_section)
+
+        print(f"Extracted {len(claims)} critical claims.")
+        
+        return {"claims": claims}
+        
+    except Exception as e:
+        return {"errors": [f"parse_pdf failed: {str(e)}"]}
 
 def retrieve_evidence(state: GraphState) -> dict:
     """
