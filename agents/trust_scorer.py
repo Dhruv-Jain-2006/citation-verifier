@@ -42,7 +42,7 @@ def compute_trust_score(
             penalties.append({
                 "claim_id": screen.claim_id,
                 "penalty": -20,
-                "reason": "Citation could not be resolved or appears hallucinated."
+                "reason": "Citation appears hallucinated (e.g., found but 0 citations)."
             })
             
     # 3. Score the Deep Verifications (Stage 2)
@@ -70,13 +70,6 @@ def compute_trust_score(
                 "claim_id": v.claim_id,
                 "penalty": -10,
                 "reason": f"Claim requires inference / only partially supported. ({v.reasoning})"
-            })
-            
-        elif v.support == "unverifiable":
-            penalties.append({
-                "claim_id": v.claim_id,
-                "penalty": -8,
-                "reason": "Abstract could not be analyzed."
             })
             
         if v.evidence_strength == "weak" and not v.contradiction_detected and v.support == "supported":

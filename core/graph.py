@@ -120,19 +120,29 @@ def critic_review(state: GraphState) -> dict:
 
 def trust_scorer(state: GraphState) -> dict:
     """
-    Deterministic python node to calculate the math for the Trust Score.
-    No LLM used here.
+    Consolidates penalties from both stages to calculate the final deterministic Trust Score.
     Updates: `score_data`.
     """
-    screening_results = state.get("screening_results", [])
-    verifications = state.get("verifications", [])
-    critic_overrides = state.get("critic_overrides", [])
-    
+    claims = state.get("claims", [])
+    if not claims:
+        print("-> Node [trust_scorer]: 0 claims detected. Audit marked as failed.")
+        return {
+            "score_data": {
+                "trust_score": None, 
+                "penalties": [], 
+                "high_risk_claims": [],
+                "audit_failed": True
+            }
+        }
+        
     print("-> Node [trust_scorer]: Calculating deterministic penalties...")
+    score_data = compute_trust_score(
+        state.get("screening_results", []),
+        state.get("verifications", []),
+        state.get("critic_overrides", [])
+    )
     
-    score_data = compute_trust_score(screening_results, verifications, critic_overrides)
-    
-    print(f"   => Final Computed Trust Score: {score_data['trust_score']}/100")
+    print(f"   => Final Computed Trust Score: {score_data.get('trust_score')}/100")
     
     return {"score_data": score_data}
 

@@ -53,7 +53,11 @@ class BroadScreeningResult(BaseModel):
         description="True if the academic DB explicitly flags this paper as retracted."
     )
     suspicious: bool = Field(
-        description="True if the reference seems completely unresolvable or hallucinated."
+        description="True if the reference seems hallucinated (e.g., found but 0 citations)."
+    )
+    resolution_failed: bool = Field(
+        default=False,
+        description="True if API rate limited or failed to resolve the citation."
     )
     api_title_match: Optional[str] = Field(
         default=None, 
@@ -67,6 +71,14 @@ class BroadScreeningResult(BaseModel):
         default=0, 
         description="Calculated heuristic risk integer (0-100). Higher is riskier."
     )
+
+class PaperSummary(BaseModel):
+    """Auxiliary output for high-level paper understanding."""
+    problem_statement: str = Field(description="Brief explanation of the core problem the paper solves.")
+    core_methodology: str = Field(description="Summary of the techniques, algorithms, or experiments used.")
+    key_contributions: List[str] = Field(description="Exactly 3 bullet points detailing the main contributions.")
+    main_results: str = Field(description="The primary quantitative or qualitative results achieved.")
+    limitations: str = Field(description="Any limitations or future work mentioned by the authors. Say 'None mentioned' if absent.")
 
 class VerificationScore(BaseModel):
     """Output from the Verifier/Critic Nodes natively returned by Gemini."""
@@ -95,7 +107,7 @@ class VerificationScore(BaseModel):
 
 class IntegrityReport(BaseModel):
     """Final output compilation representing the system's payload."""
-    trust_score: int = Field(
+    trust_score: Optional[int] = Field(
         description="0-100 integer score calculating the overall paper reliability."
     )
     summary: str = Field(

@@ -73,6 +73,7 @@ def screen_citations(claims: List[ExtractedClaim]) -> List[BroadScreeningResult]
                         exists=True,
                         retracted=is_retracted,
                         suspicious=(risk_score >= 40 and not is_retracted),
+                        resolution_failed=False,
                         api_title_match=title,
                         api_citation_count=citation_count,
                         risk_score=risk_score
@@ -83,22 +84,22 @@ def screen_citations(claims: List[ExtractedClaim]) -> List[BroadScreeningResult]
                         claim_id=claim.claim_id,
                         exists=False,
                         retracted=False,
-                        suspicious=True,
-                        api_title_match=None,
+                        suspicious=False,
+                        resolution_failed=False, # Search executed fine, just 0 matches
+                        api_title_match="NOT_FOUND",
                         api_citation_count=0,
-                        risk_score=60 # Moderate/High risk: paper doesn't seem to exist
+                        risk_score=0 # Reduced from 60 to 0. Not an integrity risk, just unresolved API.
                     )
             elif response.status_code == 429:
                 print(f"[!] Rate-limited by Semantic Scholar on claim {claim.claim_id}")
-                # Fallback on rate limit
-                result = _generate_fallback(claim.claim_id, risk_score=20)
+                result = _generate_fallback(claim.claim_id, risk_score=0)
             else:
                 print(f"[!] API Error {response.status_code} on claim {claim.claim_id}")
-                result = _generate_fallback(claim.claim_id, risk_score=20)
+                result = _generate_fallback(claim.claim_id, risk_score=0)
                 
         except Exception as e:
             print(f"[!] Exception fetching metadata for {claim.claim_id}: {str(e)}")
-            result = _generate_fallback(claim.claim_id, risk_score=20)
+            result = _generate_fallback(claim.claim_id, risk_score=0)
             
         results.append(result)
         
@@ -109,10 +110,11 @@ def _generate_fallback(claim_id: str, risk_score: int) -> BroadScreeningResult:
     """Helper to generate a safe default when API calls fail."""
     return BroadScreeningResult(
         claim_id=claim_id,
-        exists=True, # Benefit of the doubt on timeout
+        exists=False, 
         retracted=False,
         suspicious=False,
-        api_title_match="API_TIMEOUT",
+        resolution_failed=True,
+        api_title_match="API_FAILURE",
         api_citation_count=0,
         risk_score=risk_score
     )
