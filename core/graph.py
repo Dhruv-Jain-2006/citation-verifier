@@ -14,6 +14,7 @@ from agents.retriever import screen_citations, fetch_deep_abstracts
 from agents.triage import select_top_risky_claims
 from agents.verifier import evaluate_claims
 from agents.critic import execute_critic_override
+from agents.trust_scorer import compute_trust_score
 
 # ==========================================
 # 1. NODE SKELETONS (The "Brains" of the pipeline)
@@ -120,12 +121,19 @@ def trust_scorer(state: GraphState) -> dict:
     """
     Deterministic python node to calculate the math for the Trust Score.
     No LLM used here.
-    Updates: (We will ultimately bundle this into the integrity report or track it separately).
+    Updates: `score_data`.
     """
-    print("-> Node [trust_scorer]: Calculating deterministic penalties...")
-    # TODO: Loop through verifications/critic_overrides and deduct points from 100
+    screening_results = state.get("screening_results", [])
+    verifications = state.get("verifications", [])
+    critic_overrides = state.get("critic_overrides", [])
     
-    return {} # Returning empty dict to prevent breaking GraphState schema before full implementation
+    print("-> Node [trust_scorer]: Calculating deterministic penalties...")
+    
+    score_data = compute_trust_score(screening_results, verifications, critic_overrides)
+    
+    print(f"   => Final Computed Trust Score: {score_data['trust_score']}/100")
+    
+    return {"score_data": score_data}
 
 def generate_report(state: GraphState) -> dict:
     """

@@ -4,7 +4,7 @@ from utils.schemas import (
     ExtractedClaim, 
     BroadScreeningResult,
     RetrievedEvidence, 
-    VerificationScore, 
+    VerificationScore,
     IntegrityReport
 )
 
@@ -32,8 +32,10 @@ class GraphState(TypedDict):
     critic_overrides: Annotated[List[VerificationScore], operator.add]
     
     # --- Error Tracking ---
-    # Allows agents to flag failures (e.g., "API Timeout") without crashing the pipeline.
     errors: Annotated[List[str], operator.add]
+    
+    # --- Trust Score Output ---
+    score_data: dict
     
     # --- Final Synthesized Output ---
     report: Optional[IntegrityReport]
