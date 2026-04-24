@@ -15,6 +15,7 @@ from agents.triage import select_top_risky_claims
 from agents.verifier import evaluate_claims
 from agents.critic import execute_critic_override
 from agents.trust_scorer import compute_trust_score
+from agents.reporter import synthesize_report
 
 # ==========================================
 # 1. NODE SKELETONS (The "Brains" of the pipeline)
@@ -140,11 +141,16 @@ def generate_report(state: GraphState) -> dict:
     Final synthesis node compiling the Executive Risk Report.
     Updates: `report`.
     """
-    print("-> Node [generate_report]: Synthesizing the final Integrity Report payload...")
-    # TODO: Call Gemini to write the `summary` grounded in verified facts.
-    # Instantiate final IntegrityReport Pydantic object here.
+    score_data = state.get("score_data", {})
+    screening_results = state.get("screening_results", [])
+    verifications = state.get("verifications", [])
+    critic_overrides = state.get("critic_overrides", [])
     
-    return {}
+    print("-> Node [generate_report]: Synthesizing the final Integrity Report payload...")
+    
+    final_report = synthesize_report(score_data, screening_results, verifications, critic_overrides)
+    
+    return {"report": final_report}
 
 
 # ==========================================
