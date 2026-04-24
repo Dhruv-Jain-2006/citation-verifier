@@ -10,8 +10,9 @@ from utils.schemas import (
 )
 from tools.pdf_extract import extract_pdf_data
 from agents.parser import extract_critical_claims
-from agents.retriever import screen_citations
+from agents.retriever import screen_citations, fetch_deep_abstracts
 from agents.triage import select_top_risky_claims
+from agents.verifier import evaluate_claims
 
 # ==========================================
 # 1. NODE SKELETONS (The "Brains" of the pipeline)
@@ -79,22 +80,22 @@ def deep_retrieve_evidence(state: GraphState) -> dict:
     Updates: `evidence`.
     """
     triaged_claims = state.get("triaged_claims", [])
-    # TODO: Fetch abstracts based on DOIs/Metadata found in Phase 1
-    
     print(f"-> Node [deep_retrieve_evidence]: Fetching abstracts for {len(triaged_claims)} claims...")
-    return {"evidence": []}
+    
+    evidence = fetch_deep_abstracts(triaged_claims)
+    return {"evidence": evidence}
 
 def verify_claims(state: GraphState) -> dict:
     """
     Evaluates Claim vs Abstract.
     Updates: `verifications` and (optionally) `errors`.
     """
-    claims = state.get("claims", [])
+    claims = state.get("triaged_claims", [])
     evidence = state.get("evidence", [])
-    # TODO: Invoke gemini-2.5-flash Verifier prompt leveraging Pydantic VerificationScore
     
-    print("-> Node [verify_claims]: Evaluating evidence...")
-    return {"verifications": []}
+    print(f"-> Node [verify_claims]: Evaluating ({len(claims)}) claims via Gemini...")
+    verifications = evaluate_claims(claims, evidence)
+    return {"verifications": verifications}
 
 def critic_review(state: GraphState) -> dict:
     """

@@ -4,7 +4,7 @@ import re
 from typing import List
 from typing import List
 
-from utils.schemas import ExtractedClaim, BroadScreeningResult
+from utils.schemas import ExtractedClaim, BroadScreeningResult, RetrievedEvidence
 
 def screen_citations(claims: List[ExtractedClaim]) -> List[BroadScreeningResult]:
     """
@@ -116,6 +116,67 @@ def _generate_fallback(claim_id: str, risk_score: int) -> BroadScreeningResult:
         api_citation_count=0,
         risk_score=risk_score
     )
+
+def fetch_deep_abstracts(claims: List[ExtractedClaim]) -> List[RetrievedEvidence]:
+    """
+    Stage 2 Deep Retrieval.
+    Fetches the actual string content of the abstract for the triaged claims.
+    """
+    results = []
+    BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+    
+    for claim in claims:
+        query_text = claim.full_bibliography_entry.strip()
+        if not query_text:
+            query_text = claim.in_text_claim
+            
+        search_query = query_text[:120]
+        search_query = re.sub(r'[^\w\s]', ' ', search_query)
+        search_query = ' '.join(search_query.split())
+        
+        params = {
+            "query": search_query,
+            "limit": 1,
+            "fields": "title,abstract,externalIds"
+        }
+        
+        time.sleep(0.25) # Avoid aggressive rate-limiting
+
+        headers = {
+            "User-Agent": "citation-verifier-agent/0.1"
+        }
+
+        try:
+            response = requests.get(BASE_URL, params=params, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if "data" in data and len(data["data"]) > 0:
+                    paper = data["data"][0]
+                    abstract = paper.get("abstract")
+                    
+                    if abstract:
+                        results.append(RetrievedEvidence(
+                            claim_id=claim.claim_id,
+                            found=True,
+                            abstract=abstract,
+                            doi=paper.get("externalIds", {}).get("DOI")
+                        ))
+                    else:
+                        results.append(RetrievedEvidence(
+                            claim_id=claim.claim_id,
+                            found=False,
+                            doi=paper.get(
+                                "externalIds", {}
+                            ).get("DOI")
+                        ))
+                else:
+                    results.append(RetrievedEvidence(claim_id=claim.claim_id, found=False))
+            else:
+                results.append(RetrievedEvidence(claim_id=claim.claim_id, found=False))
+        except Exception:
+            results.append(RetrievedEvidence(claim_id=claim.claim_id, found=False))
+            
+    return results
 
 if __name__ == "__main__":
     # Smoke Test

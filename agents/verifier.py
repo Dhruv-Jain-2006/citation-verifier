@@ -1,106 +1,102 @@
 import os
 import json
-import re
+from typing import List
 from dotenv import load_dotenv
 import google.generativeai as genai
 
+from utils.schemas import ExtractedClaim, RetrievedEvidence, VerificationScore
+
+# Ensure environment variables are loaded for the API key
 load_dotenv()
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-genai.configure(
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
+def evaluate_claims(claims: List[ExtractedClaim], evidence_list: List[RetrievedEvidence]) -> List[VerificationScore]:
+    """
+    Ingests triaged claims and abstract evidence, verifying support levels natively with Gemini structured output.
+    """
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    
+    # Map evidence by claim_id for quick lookup
+    evidence_map = {e.claim_id: e for e in evidence_list}
+    verifications = []
+    
+    for claim in claims:
+        evidence = evidence_map.get(claim.claim_id)
+        
+        # If we failed to retrieve an abstract in the deep_retrieval node,
+        # fallback to an unverifiable score deterministically rather than wasting an LLM call.
+        if not evidence or not evidence.found or not evidence.abstract:
+            verifications.append(VerificationScore(
+                claim_id=claim.claim_id,
+                support="unverifiable",
+                evidence_strength="none",
+                contradiction_detected=False,
+                reasoning="Abstract could not be explicitly retrieved from Semantic Scholar.",
+                confidence=0
+            ))
+            continue
+            
+        prompt = f"""
+        You are a skeptical scientific citation verification judge.
 
-# Use Flash for development.
-# Later you can switch to gemini-3.1-pro-preview
-model = genai.GenerativeModel(
-    "gemini-2.5-flash"
-)
+        Task:
+        Determine whether the provided abstract fundamentally supports the claim made by the authors.
 
+        Claim text:
+        "{claim.in_text_claim}"
 
-def verify_claim_support(claim, abstract):
+        Cited Abstract Evidence:
+        "{evidence.abstract}"
 
-    prompt = f"""
-You are a skeptical scientific citation verification judge.
+        Evaluate conservatively.
 
-Task:
-Determine whether the cited abstract supports the claim.
+        Rules:
+        - Only mark "supported" if support is explicit in the abstract.
+        - If any inference, extrapolation, or indirect reasoning is required, return "partially_supported".
+        - If the claim is absent or contradicted, return "unsupported".
 
-Use this rubric:
+        Rubric:
+        - unsupported: Claim is explicitly contradicted or conceptually absent.
+        - partially_supported: Related evidence exists but support is incomplete or inferred.
+        - supported: Every key concept in the claim is explicitly supported.
 
-supported:
-Every key concept in the claim is explicitly supported
-by the abstract, with no inference required.
+        Do not be generous.
+        Bias toward partially_supported when uncertain.
 
-partially_supported:
-Any claim requiring inference, semantic interpretation,
-or containing unsupported concepts belongs here.
+        Return the assessment as structured JSON adhering to the constraints.
+        """
+        
+        try:
+            # Enforce the strict Pydantic Generation Config
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=VerificationScore,
+                    temperature=0.0
+                )
+            )
+            
+            data = json.loads(response.text)
+            
+            # The LLM is generally good, but to ensure strict LangGraph mapping, 
+            # we force-override the claim_id to guarantee graph integrity.
+            data["claim_id"] = claim.claim_id
+            
+            verifications.append(VerificationScore(**data))
+            
+        except Exception as e:
+            print(f"[Verifier Error] Failed LLM execution on {claim.claim_id}: {e}")
+            verifications.append(VerificationScore(
+                claim_id=claim.claim_id,
+                support="unverifiable",
+                evidence_strength="none",
+                contradiction_detected=False,
+                reasoning=f"LLM semantic parsing failed: {e}",
+                confidence=0
+            ))
+            
+    return verifications
 
-unsupported:
-The claim is absent or contradicted.
-
-Rules:
-- Be conservative.
-- Only mark supported if claim wording is explicitly supported.
-- If support depends on inference or interpretation,
-  return partially_supported.
-- Do not infer unstated concepts such as costs,
-  efficiency, or performance unless explicitly stated.
-- If claim contradicts abstract, return:
-  support="unsupported"
-  contradiction_detected=true
-
-Claim:
-{claim}
-
-Abstract:
-{abstract}
-
-Return ONLY valid JSON.
-No markdown.
-No explanations outside JSON.
-
-Use EXACT schema:
-
-{{
-"support":"supported|partially_supported|unsupported",
-"confidence": integer from 0 to 100 only,
-"evidence_strength":"strong|moderate|weak",
-"contradiction_detected": true/false,
-"reasoning":"one concise sentence"
-}}
-"""
-
-    response = model.generate_content(prompt)
-
-    text = response.text.strip()
-
-    # Remove accidental markdown fences
-    text = re.sub(r"```json|```", "", text).strip()
-
-    try:
-        return json.loads(text)
-
-    except Exception:
-        return {
-            "support":"parse_error",
-            "confidence":0,
-            "evidence_strength":"weak",
-            "contradiction_detected":False,
-            "reasoning":text
-        }
-
-
-def compute_trust_score(result):
-
-    score = result["confidence"]
-
-    if result["evidence_strength"] == "weak":
-        score -= 20
-
-    elif result["evidence_strength"] == "moderate":
-        score -= 10
-
-    if result["contradiction_detected"]:
-        score -= 30
-
-    return max(score,0)
+if __name__ == "__main__":
+    print("Semantic Verifier Module initialized.")
