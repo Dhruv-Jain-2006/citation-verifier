@@ -10,6 +10,8 @@ from utils.schemas import (
 )
 from tools.pdf_extract import extract_pdf_data
 from agents.parser import extract_critical_claims
+from agents.retriever import screen_citations
+from agents.triage import select_top_risky_claims
 
 # ==========================================
 # 1. NODE SKELETONS (The "Brains" of the pipeline)
@@ -48,15 +50,38 @@ def parse_pdf(state: GraphState) -> dict:
     except Exception as e:
         return {"errors": [f"parse_pdf failed: {str(e)}"]}
 
-def retrieve_evidence(state: GraphState) -> dict:
+def broad_screen_citations(state: GraphState) -> dict:
     """
-    Fetches real abstracts for the citations mapped to the extracted claims.
-    Updates: `evidence` and (optionally) `errors`.
+    Stage 1: Pings Semantic Scholar for ALL extracted claims.
+    Updates: `screening_results`.
     """
     claims = state.get("claims", [])
-    # TODO: Map over claims and hit Semantic Scholar / Crossref APIs
+    print(f"-> Node [broad_screen]: Screening {len(claims)} citations via API...")
     
-    print(f"-> Node [retrieve_evidence]: Fetching DOIs for {len(claims)} claims...")
+    results = screen_citations(claims)
+    return {"screening_results": results}
+
+def triage_node(state: GraphState) -> dict:
+    """
+    Ranks claims and promotes the top 5 riskiest to Stage 2.
+    Updates: `triaged_claims`.
+    """
+    claims = state.get("claims", [])
+    screens = state.get("screening_results", [])
+    
+    triaged = select_top_risky_claims(claims, screens)
+    print(f"-> Node [triage_node]: Promoted {len(triaged)} claims to Stage 2.")
+    return {"triaged_claims": triaged}
+
+def deep_retrieve_evidence(state: GraphState) -> dict:
+    """
+    Stage 2: Fetches real abstract text ONLY for the triaged claims.
+    Updates: `evidence`.
+    """
+    triaged_claims = state.get("triaged_claims", [])
+    # TODO: Fetch abstracts based on DOIs/Metadata found in Phase 1
+    
+    print(f"-> Node [deep_retrieve_evidence]: Fetching abstracts for {len(triaged_claims)} claims...")
     return {"evidence": []}
 
 def verify_claims(state: GraphState) -> dict:
@@ -144,15 +169,19 @@ workflow = StateGraph(GraphState)
 
 # Define the nodes
 workflow.add_node("parse_pdf", parse_pdf)
-workflow.add_node("retrieve_evidence", retrieve_evidence)
+workflow.add_node("broad_screen", broad_screen_citations)
+workflow.add_node("triage", triage_node)
+workflow.add_node("deep_retrieve", deep_retrieve_evidence)
 workflow.add_node("verify_claims", verify_claims)
 workflow.add_node("critic_review", critic_review)
 workflow.add_node("trust_scorer", trust_scorer)
 workflow.add_node("generate_report", generate_report)
 
 # Define the standard acyclic edges
-workflow.add_edge("parse_pdf", "retrieve_evidence")
-workflow.add_edge("retrieve_evidence", "verify_claims")
+workflow.add_edge("parse_pdf", "broad_screen")
+workflow.add_edge("broad_screen", "triage")
+workflow.add_edge("triage", "deep_retrieve")
+workflow.add_edge("deep_retrieve", "verify_claims")
 
 # Conditional Edge from Verifier
 workflow.add_conditional_edges(

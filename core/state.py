@@ -2,6 +2,7 @@ import operator
 from typing import TypedDict, Annotated, List, Optional
 from utils.schemas import (
     ExtractedClaim, 
+    BroadScreeningResult,
     RetrievedEvidence, 
     VerificationScore, 
     IntegrityReport
@@ -24,6 +25,8 @@ class GraphState(TypedDict):
     # This is critical for parallel node execution and mapping.
     
     claims: Annotated[List[ExtractedClaim], operator.add]
+    screening_results: Annotated[List[BroadScreeningResult], operator.add]
+    triaged_claims: Annotated[List[ExtractedClaim], operator.add]
     evidence: Annotated[List[RetrievedEvidence], operator.add]
     verifications: Annotated[List[VerificationScore], operator.add]
     critic_overrides: Annotated[List[VerificationScore], operator.add]
