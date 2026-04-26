@@ -84,29 +84,57 @@ def synthesize_report(
         summary_lines.append(f"🚨 MAJOR CONTRADICTION DETECTED: {contradictions} abstract(s) explicitly contradict the author's claims.")
         
     summary_lines.append("")
-    summary_lines.append("PENALTY LOG:")
-    if not penalties:
+
+    integrity_penalties = [
+        p for p in penalties if "[System Uncertainty]" not in p["reason"]
+    ]
+
+    uncertainty_penalties = [
+        p for p in penalties if "[System Uncertainty]" in p["reason"]
+    ]
+
+    summary_lines.append("PENALTY LOG (INTEGRITY):")
+    if not integrity_penalties:
         summary_lines.append("None. Paper appears highly reliable.")
     else:
-        for p in penalties:
-            summary_lines.append(f"[-{abs(p['penalty'])}] {p['claim_id']}: {p['reason']}")
+        for p in integrity_penalties:
+            summary_lines.append(
+                f"[-{abs(p['penalty'])}] {p['claim_id']}: {p['reason']}"
+            )
 
-        #Executive Verdict
-        if trust_score >= 85:
-            summary_lines.append("")
+    summary_lines.append("")
+    summary_lines.append("SYSTEM UNCERTAINTY LOG:")
+
+    if not uncertainty_penalties:
+        summary_lines.append("None.")
+    else:
+        summary_lines.append(
+            f"{len(uncertainty_penalties)} uncertainty penalties applied."
+        )
+
+        for p in uncertainty_penalties:
             summary_lines.append(
-                "VERDICT: High citation integrity."
+                f"[-{abs(p['penalty'])}] {p['claim_id']}: {p['reason']}"
             )
-        elif trust_score >= 65:
-            summary_lines.append("")
-            summary_lines.append(
-                "VERDICT: Moderate integrity; caution advised."
-            )
-        else:
-            summary_lines.append("")
-            summary_lines.append(
-                "VERDICT: Low integrity; significant citation risk detected."
-            )
+
+    # Executive Verdict (always rendered)
+    summary_lines.append("")
+    
+    # Check if high uncertainty dominates the audit
+    total_claims = total_verified
+    uncertainty_ratio = unverifiable_count / total_claims if total_claims > 0 else 0
+    
+    if trust_score >= 85 and uncertainty_ratio <= 0.5:
+        summary_lines.append("VERDICT: High citation integrity.")
+    elif trust_score >= 85 and uncertainty_ratio > 0.5:
+        summary_lines.append(
+            "VERDICT: Score is high, but system confidence is limited due to unresolved citations. "
+            "Manual spot-checking recommended."
+        )
+    elif trust_score >= 65:
+        summary_lines.append("VERDICT: Moderate integrity; caution advised.")
+    else:
+        summary_lines.append("VERDICT: Low integrity; significant citation risk detected.")
             
     final_summary = "\n".join(summary_lines)
     

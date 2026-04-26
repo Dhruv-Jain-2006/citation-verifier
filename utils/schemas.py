@@ -13,7 +13,10 @@ class ExtractedClaim(BaseModel):
         description="The inline citation marker, e.g., '[12]' or '(Smith, 2023)'."
     )
     full_bibliography_entry: str = Field(
-        description="The complete bibliographic entry mapped to this citation."
+        description="The complete bibliographic entry mapped to this citation. Empty string if not found."
+    )
+    cited_paper_title: str = Field(
+        description="The exact title of the cited paper extracted from the bibliography entry. Empty string if not found."
     )
 
 class RetrievedEvidence(BaseModel):
@@ -25,19 +28,19 @@ class RetrievedEvidence(BaseModel):
         description="Whether the external DB successfully found the abstract."
     )
     abstract: Optional[str] = Field(
-        default=None, 
+        None, 
         description="The raw abstract text fetched from the external literature database."
     )
     doi: Optional[str] = Field(
-        default=None, 
+        None, 
         description="The DOI of the fetched paper."
     )
     title: Optional[str] = Field(
-        default=None,
+        None,
         description="Retrieved paper title."
     )
     authors: Optional[str] = Field(
-        default=None,
+        None,
         description="Retrieved paper authors."
     )
 
@@ -56,19 +59,19 @@ class BroadScreeningResult(BaseModel):
         description="True if the reference seems hallucinated (e.g., found but 0 citations)."
     )
     resolution_failed: bool = Field(
-        default=False,
+        False,
         description="True if API rate limited or failed to resolve the citation."
     )
     api_title_match: Optional[str] = Field(
-        default=None, 
+        None, 
         description="The title as recovered from the database."
     )
     api_citation_count: Optional[int] = Field(
-        default=0, 
+        0, 
         description="Total citations the retrieved paper has."
     )
     risk_score: int = Field(
-        default=0, 
+        0, 
         description="Calculated heuristic risk integer (0-100). Higher is riskier."
     )
 
@@ -86,12 +89,10 @@ class VerificationScore(BaseModel):
         description="The ID of the evaluated claim."
     )
     support: str = Field(
-        description="The categorical alignment of the claim vs the abstract.",
-        pattern="^(supported|partially_supported|unsupported|unverifiable)$"
+        description="The categorical alignment of the claim vs the abstract. Must be exactly one of: supported, partially_supported, unsupported, unverifiable."
     )
     evidence_strength: str = Field(
-        description="Qualitative assessment of the cited abstract's relevance.",
-        pattern="^(strong|moderate|weak|none)$"
+        description="Qualitative assessment of the cited abstract's relevance. Must be exactly one of: strong, moderate, weak, none."
     )
     contradiction_detected: bool = Field(
         description="True if the abstract explicitly contradicts the author's claim."
@@ -100,8 +101,6 @@ class VerificationScore(BaseModel):
         description="A concise one-sentence justification for the output scores."
     )
     confidence: int = Field(
-        ge=0,
-        le=100,
         description="Confidence score from 0 to 100."
     )
 

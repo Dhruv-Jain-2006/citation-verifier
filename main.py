@@ -4,6 +4,8 @@ from core.graph import citation_graph
 from agents.summarizer import generate_paper_summary
 from tools.pdf_extract import extract_pdf_data
 
+ENABLE_SUMMARIZER = False
+
 def download_sample_paper(filepath: str):
     print(f"Downloading sample paper to {filepath}...")
     url = "https://arxiv.org/pdf/1706.03762.pdf" # Attention is All You Need
@@ -56,7 +58,8 @@ def main():
     print(f"\n\n{'='*50}\nFINAL SYSTEM OUTPUT\n{'='*50}")
     
     if final_report:
-        print(f"TRUST SCORE: {final_report.trust_score}/100")
+        score_str = f"{final_report.trust_score}/100" if final_report.trust_score is not None else "N/A (Audit Failed)"
+        print(f"TRUST SCORE: {score_str}")
         
         print("\n--- EXECUTIVE SUMMARY ---")
         print(final_report.summary)
@@ -65,32 +68,33 @@ def main():
             print("\n--- HIGH RISK CLAIMS FLAGGED ---")
             for c in final_report.high_risk_claims:
                 print(f"- {c}")
-                
-        # --- TEST NEW AUXILIARY SUMMARIZER ---
-        print("\n\n==================================================")
-        print("GENERATING AUXILIARY PAPER SUMMARY")
-        print("==================================================")
-        
-        # Extract text directly for the auxiliary module
-        raw_data = extract_pdf_data(pdf_path)
-        pdf_text = raw_data.get("full_text", "")
-        
-        # if pdf_text:
-        #     print("This may take a few seconds...")
-        #     summary = generate_paper_summary(pdf_text)
-        #     print("\n[PROBLEM STATEMENT]")
-        #     print(summary.problem_statement)
-        #     print("\n[CORE METHODOLOGY]")
-        #     print(summary.core_methodology)
-        #     print("\n[KEY CONTRIBUTIONS]")
-        #     for c in summary.key_contributions:
-        #         print(f"- {c}")
-        #     print("\n[MAIN RESULTS]")
-        #     print(summary.main_results)
-        #     print("\n[LIMITATIONS]")
-        #     print(summary.limitations)
-        # else:
-        #     print("[!] Could not extract PDF text for summarization.")
+
+        if ENABLE_SUMMARIZER:        
+            # --- TEST NEW AUXILIARY SUMMARIZER ---
+            print("\n\n==================================================")
+            print("GENERATING AUXILIARY PAPER SUMMARY")
+            print("==================================================")
+            
+            # Extract text directly for the auxiliary module
+            raw_data = extract_pdf_data(pdf_path)
+            pdf_text = raw_data.get("full_text", "")
+            
+            if pdf_text:
+                print("This may take a few seconds...")
+                summary = generate_paper_summary(pdf_text)
+                print("\n[PROBLEM STATEMENT]")
+                print(summary.problem_statement)
+                print("\n[CORE METHODOLOGY]")
+                print(summary.core_methodology)
+                print("\n[KEY CONTRIBUTIONS]")
+                for c in summary.key_contributions:
+                    print(f"- {c}")
+                print("\n[MAIN RESULTS]")
+                print(summary.main_results)
+                print("\n[LIMITATIONS]")
+                print(summary.limitations)
+            else:
+                print("[!] Could not extract PDF text for summarization.")
             
     else:
         print("\n[!] Pipeline failed to generate a final report.")

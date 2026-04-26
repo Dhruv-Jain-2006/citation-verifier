@@ -44,6 +44,14 @@ def compute_trust_score(
                 "penalty": -20,
                 "reason": "Citation appears hallucinated (e.g., found but 0 citations)."
             })
+        
+        # Mild uncertainty tax for unresolved API calls (not elif — can stack with retracted/suspicious)
+        if screen.resolution_failed:
+            penalties.append({
+                "claim_id": screen.claim_id,
+                "penalty": -2,
+                "reason": "[System Uncertainty] Citation could not be verified due to API timeout/rate limit."
+            })
             
     # 3. Score the Deep Verifications (Stage 2)
     for v in final_verifications.values():
@@ -70,6 +78,13 @@ def compute_trust_score(
                 "claim_id": v.claim_id,
                 "penalty": -10,
                 "reason": f"Claim requires inference / only partially supported. ({v.reasoning})"
+            })
+            
+        elif v.support == "unverifiable":
+            penalties.append({
+                "claim_id": v.claim_id,
+                "penalty": -3,
+                "reason": "[System Uncertainty] Abstract could not be retrieved for verification."
             })
             
         if v.evidence_strength == "weak" and not v.contradiction_detected and v.support == "supported":

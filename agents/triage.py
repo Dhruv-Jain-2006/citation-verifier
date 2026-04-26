@@ -3,8 +3,8 @@ from utils.schemas import ExtractedClaim, BroadScreeningResult
 
 def select_top_risky_claims(claims: List[ExtractedClaim],
                             screening_results: List[BroadScreeningResult],
-                            threshold: int = 40,
-                            max_claims: int = 5) -> List[ExtractedClaim]:
+                            threshold: int = 10,
+                            max_claims: int = 3) -> List[ExtractedClaim]:
     """
     Ranks claims based on the Stage 1 metadata screen and heuristics.
     Selects the most foundational/risky claims for Stage 2 Deep Verification.
@@ -12,7 +12,8 @@ def select_top_risky_claims(claims: List[ExtractedClaim],
     Args:
         claims: All claims parsed from the document.
         screening_results: The BroadScreeningResult objects for all claims.
-        threshold: Minimum risk score for a claim to warrant deep verification.
+        threshold: Minimum triage score for a claim to warrant deep verification.
+                   Lowered from 40 to 10 to ensure adequate coverage.
         max_claims: Absolute ceiling on how many claims to pass to Stage 2.
         
     Returns:
@@ -23,14 +24,25 @@ def select_top_risky_claims(claims: List[ExtractedClaim],
     screen_map = {res.claim_id: res for res in screening_results}
     
     scored_claims: List[Tuple[int, ExtractedClaim]] = []
+    seen_ids = set()  # Prevent duplicate promotion
     
     for claim in claims:
+        # Skip duplicates
+        if claim.claim_id in seen_ids:
+            continue
+        seen_ids.add(claim.claim_id)
+        
         # Base logic: If no screening result found, assume moderate risk fallback
         screen_res = screen_map.get(claim.claim_id)
         if not screen_res:
             score = 30
         else:
             score = screen_res.risk_score
+            
+            # Boost claims whose citations couldn't be resolved (API failure)
+            # so they get a fair chance at deep verification rather than being silently skipped
+            if screen_res.resolution_failed:
+                score += 10
             
         # --- CLAIM IMPORTANCE HEURISTIC ---
         # Longer in-text claims often assert specific, testable methodologies/results.
@@ -46,19 +58,18 @@ def select_top_risky_claims(claims: List[ExtractedClaim],
     # Sort claims descending by their final triage score (highest risk first)
     scored_claims.sort(key=lambda x: x[0], reverse=True)
     
+    # Promote up to min(3, max_claims, available) to ensure score discrimination
+    min_promote = min(3, max_claims, len(scored_claims))
+    
     triaged = []
     for score, claim in scored_claims:
-        if score >= threshold and len(triaged) < max_claims:
+        if len(triaged) >= max_claims:
+            break
+        if score >= threshold or len(triaged) < min_promote:
             print(f"[*] Triaged Claim '{claim.claim_id}' (Score: {score})")
             triaged.append(claim)
             
-    # Guarantee at least 1 claim makes it through if the document has any claims at all
-    # (prevents the pipeline from returning a blank report if all claims are "safe")
-    if not triaged and scored_claims:
-        print(f"[*] Triaged fallback Claim '{scored_claims[0][1].claim_id}' (Score: {scored_claims[0][0]})")
-        triaged.append(scored_claims[0][1])
-        
-    return triaged[:max_claims]
+    return triaged
 
 if __name__ == "__main__":
     # Smoke Test
