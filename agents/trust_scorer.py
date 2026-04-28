@@ -74,11 +74,18 @@ def compute_trust_score(
                 high_risk_claims.append(v.claim_id)
                 
         elif v.support == "partially_supported":
-            penalties.append({
-                "claim_id": v.claim_id,
-                "penalty": -10,
-                "reason": f"Claim requires inference / only partially supported. ({v.reasoning})"
-            })
+            if v.evidence_strength in ["strong", "moderate"]:
+                penalties.append({
+                    "claim_id": v.claim_id,
+                    "penalty": -3,
+                    "reason": f"Claim relies on background/lineage citation or requires inference. ({v.reasoning})"
+                })
+            else:
+                penalties.append({
+                    "claim_id": v.claim_id,
+                    "penalty": -5,
+                    "reason": f"Claim partially supported but relies on weak evidence. ({v.reasoning})"
+                })
             
         elif v.support == "unverifiable":
             penalties.append({

@@ -104,6 +104,10 @@ class VerificationScore(BaseModel):
         description="Confidence score from 0 to 100."
     )
 
+class BatchedVerificationOutput(BaseModel):
+    """Wrapper for batched structured evaluation of multiple claims."""
+    verifications: List[VerificationScore]
+
 class IntegrityReport(BaseModel):
     """Final output compilation representing the system's payload."""
     trust_score: Optional[int] = Field(
