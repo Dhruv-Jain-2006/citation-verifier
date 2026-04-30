@@ -8,6 +8,21 @@ from utils.schemas import (
     IntegrityReport
 )
 
+def merge_call_counts(old_counts: dict, new_counts: dict) -> dict:
+    """Combines two call count dictionaries by summing matching keys."""
+    combined = old_counts.copy() if old_counts else {}
+    if not new_counts:
+        return combined
+        
+    for k, v in new_counts.items():
+        if isinstance(v, dict):
+            # Recurse for nested counts (e.g. per-agent counts)
+            combined[k] = merge_call_counts(combined.get(k, {}), v)
+        else:
+            combined[k] = combined.get(k, 0) + v
+    return combined
+
+
 class GraphState(TypedDict):
     """
     The strictly typed state machine payload passed between LangGraph nodes.
@@ -39,3 +54,7 @@ class GraphState(TypedDict):
     
     # --- Final Synthesized Output ---
     report: Optional[IntegrityReport]
+
+    # --- Quota and Instrumentation ---
+    llm_quota_exhausted: bool
+    call_counts: Annotated[dict, merge_call_counts]

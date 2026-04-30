@@ -39,7 +39,14 @@ def main():
         "critic_overrides": [],
         "errors": [],
         "score_data": {},
-        "report": None
+        "report": None,
+        "llm_quota_exhausted": False,
+        "call_counts": {
+            "parser_calls": 0,
+            "verifier_calls": 0,
+            "critic_calls": 0,
+            "retry_calls": 0
+        }
     }
     
     # LangGraph returns a stream of dictionaries mapping NodeName -> StateUpdates
@@ -54,6 +61,12 @@ def main():
                 initial_state["pdf_text"] = updates["pdf_text"]
             if "errors" in updates and updates["errors"]:
                 print("[Node Errors]", updates["errors"])
+            if "call_counts" in updates:
+                for k, v in updates["call_counts"].items():
+                    initial_state["call_counts"][k] = initial_state["call_counts"].get(k, 0) + v
+            if "llm_quota_exhausted" in updates:
+                initial_state["llm_quota_exhausted"] = updates["llm_quota_exhausted"]
+
             
     print(f"\n\n{'='*50}\nFINAL SYSTEM OUTPUT\n{'='*50}")
     
@@ -68,6 +81,16 @@ def main():
             print("\n--- HIGH RISK CLAIMS FLAGGED ---")
             for c in final_report.high_risk_claims:
                 print(f"- {c}")
+
+        print("\n--- LLM CALL ACCOUNTING ---")
+        counts = initial_state["call_counts"]
+        print(f"parser_calls:   {counts.get('parser_calls', 0)}")
+        print(f"verifier_calls: {counts.get('verifier_calls', 0)}")
+        print(f"critic_calls:   {counts.get('critic_calls', 0)}")
+        print(f"retry_calls:    {counts.get('retry_calls', 0)}")
+        total = sum(counts.values())
+        print(f"total_calls:    {total}")
+
 
         if ENABLE_SUMMARIZER:        
             # --- TEST NEW AUXILIARY SUMMARIZER ---

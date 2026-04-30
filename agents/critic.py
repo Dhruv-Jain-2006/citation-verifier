@@ -1,12 +1,13 @@
 import os
 import json
 import time
-from typing import List
+from typing import List, Tuple
 from dotenv import load_dotenv
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
 
 from utils.schemas import ExtractedClaim, RetrievedEvidence, VerificationScore, BatchedVerificationOutput
+from utils.quota_manager import classify_quota_error
 
 # Ensure environment variables are loaded for the API key
 load_dotenv()
@@ -14,13 +15,20 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 def execute_critic_override(claims: List[ExtractedClaim], 
                             evidence_list: List[RetrievedEvidence], 
-                            verifications: List[VerificationScore]) -> List[VerificationScore]:
+                            verifications: List[VerificationScore],
+                            quota_exhausted: bool = False) -> Tuple[List[VerificationScore], dict]:
     """
     Second-pass override layer acting as a deterministic Appellate Court.
     Uses Batched evaluation to prevent Quota Exhaustion.
     """
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    updates = {"llm_quota_exhausted": quota_exhausted, "call_counts": {"critic_calls": 0, "retry_calls": 0}}
     overrides = []
+
+    if quota_exhausted:
+        print("[Quota Exhaustion Failsafe Activated] Bypassing Critic LLM.")
+        return overrides, updates
+
+    model = genai.GenerativeModel("gemini-2.5-flash")
     
     claims_map = {c.claim_id: c for c in claims}
     evidence_map = {e.claim_id: e for e in evidence_list}
@@ -28,8 +36,6 @@ def execute_critic_override(claims: List[ExtractedClaim],
     disputed_items = []
     
     for v in verifications:
-        # C. Critic trigger restraint
-        # Trigger only for unsupported claims, or low-confidence partially_supported claims.
         needs_review = False
         if v.support == "unsupported":
             needs_review = True
@@ -48,7 +54,7 @@ def execute_critic_override(claims: List[ExtractedClaim],
         disputed_items.append((claim, evidence, v))
         
     if not disputed_items:
-        return overrides
+        return overrides, updates
         
     # Build Batched Prompt
     claims_text = ""
@@ -61,23 +67,7 @@ def execute_critic_override(claims: List[ExtractedClaim],
 
     prompt = f"""
     You are an appellate scientific verification judge.
-    You are given a batch of {len(disputed_items)} disputed claims.
-    Evaluate each claim INDEPENDENTLY. Do not let one claim's weakness influence judgments for others.
-    
-    Be citation-function aware. Consider the citation role (e.g., empirical support vs background/lineage).
-
-    Rules:
-    - For direct empirical claims, mark "supported" ONLY if support is explicit in the abstract.
-    - For background/lineage citations: If the abstract establishes foundational relevance but does not fully substantiate the author's modern framing, default to "partially_supported". Reserve "supported" only when the abstract genuinely supports the exact framing.
-    - CRITICAL DOWNGRADE RULE: If a claim depends on details absent from an abstract (equations, parameterization, fine-grained comparisons), but the abstract strongly matches the topic relevance, downgrade "unsupported" to "partially_supported".
-    - Reserve "unsupported" strictly for explicit contradictions or completely irrelevant citations.
-    - Do NOT hallucinate missing evidence or assume domain knowledge beyond the abstract.
-
-    Goal:
-    Correct overly strict or unclear reasoning. Do not falsely flag legitimate context/lineage citations as unsupported. Do not weaken justified contradiction findings.
-
-    Return the assessment as structured JSON adhering to the constraints.
-    CRITICAL: Ensure the `claim_id` in your output EXACTLY matches the Claim ID provided in the item block.
+    Evaluate each of the following {len(disputed_items)} disputed claims INDEPENDENTLY.
     
     {claims_text}
     """
@@ -86,7 +76,14 @@ def execute_critic_override(claims: List[ExtractedClaim],
     base_delay = 4
     
     for attempt in range(max_retries):
+        if updates["llm_quota_exhausted"]:
+            break
+            
         try:
+            updates["call_counts"]["critic_calls"] += 1
+            if attempt > 0:
+                updates["call_counts"]["retry_calls"] += 1
+
             response = model.generate_content(
                 prompt,
                 generation_config=genai.GenerationConfig(
@@ -101,10 +98,6 @@ def execute_critic_override(claims: List[ExtractedClaim],
                 raise ValueError("Missing verifications field")
             batch_results = data.get("verifications", [])
             
-            # A. Dual mapping protection (both ID and positional validation)
-            if len(batch_results) != len(disputed_items):
-                print(f"[Critic Warning] Length mismatch: Expected {len(disputed_items)}, got {len(batch_results)}")
-                
             for i, (claim, evidence, v) in enumerate(disputed_items):
                 try:
                     res_data = None
@@ -121,11 +114,9 @@ def execute_critic_override(claims: List[ExtractedClaim],
                             
                     override = VerificationScore(**res_data)
                     
-                    # Prevent overly aggressive reversal
                     if override.support == "supported" and v.support == "unsupported":
                         override.support = "partially_supported"
 
-                    # Prevent critic from erasing contradictions too easily
                     if v.contradiction_detected and not override.contradiction_detected:
                         override.support = "partially_supported"
                         override.contradiction_detected = True
@@ -136,17 +127,12 @@ def execute_critic_override(claims: List[ExtractedClaim],
             
             break # Success
             
-        except ResourceExhausted as e:
-            # D. Quota exhaustion handling
-            if attempt < max_retries - 1:
-                sleep_time = base_delay ** (attempt + 1)
-                print(f"[Critic 429] Quota exhausted. Waiting {sleep_time}s...")
-                time.sleep(sleep_time)
-                continue
-            else:
-                print(f"[Critic Error] Ultimate Quota Exhaustion.")
-                break
         except Exception as e:
+            if classify_quota_error(e) == "RPD":
+                print(f"[Quota Exhaustion Failsafe Activated] Detected hard quota exhaustion in Critic: {e}")
+                updates["llm_quota_exhausted"] = True
+                break
+
             if attempt < max_retries - 1:
                 time.sleep(base_delay ** (attempt + 1))
                 continue
@@ -154,7 +140,7 @@ def execute_critic_override(claims: List[ExtractedClaim],
             print(f"[Critic Error] Failed LLM Batch execution: {e}")
             break
 
-    return overrides
+    return overrides, updates
 
 if __name__ == "__main__":
     print("Semantic Critic Module initialized.")

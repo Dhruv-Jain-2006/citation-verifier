@@ -45,11 +45,19 @@ def parse_pdf(state: GraphState) -> dict:
             return {
                 "errors":["No citation paragraphs extracted."]
             }
-        claims = extract_critical_claims(citation_paragraphs, references_section)
+        claims, quota_updates = extract_critical_claims(
+            citation_paragraphs, 
+            references_section, 
+            quota_exhausted=state.get("llm_quota_exhausted", False)
+        )
 
         print(f"Extracted {len(claims)} critical claims.")
         
-        return {"claims": claims}
+        return {
+            "claims": claims,
+            "llm_quota_exhausted": quota_updates["llm_quota_exhausted"],
+            "call_counts": quota_updates["call_counts"]
+        }
         
     except Exception as e:
         return {"errors": [f"parse_pdf failed: {str(e)}"]}
@@ -97,8 +105,16 @@ def verify_claims(state: GraphState) -> dict:
     evidence = state.get("evidence", [])
     
     print(f"-> Node [verify_claims]: Evaluating ({len(claims)}) claims via Gemini...")
-    verifications = evaluate_claims(claims, evidence)
-    return {"verifications": verifications}
+    verifications, quota_updates = evaluate_claims(
+        claims, 
+        evidence,
+        quota_exhausted=state.get("llm_quota_exhausted", False)
+    )
+    return {
+        "verifications": verifications,
+        "llm_quota_exhausted": quota_updates["llm_quota_exhausted"],
+        "call_counts": quota_updates["call_counts"]
+    }
 
 def critic_review(state: GraphState) -> dict:
     """
@@ -111,12 +127,21 @@ def critic_review(state: GraphState) -> dict:
     
     print(f"-> Node [critic_review]: Performing rigorous override review on Verifier outputs...")
     
-    overrides = execute_critic_override(claims, evidence, verifications)
+    overrides, quota_updates = execute_critic_override(
+        claims, 
+        evidence, 
+        verifications,
+        quota_exhausted=state.get("llm_quota_exhausted", False)
+    )
     
     if overrides:
         print(f"   => Critic generated {len(overrides)} override(s).")
         
-    return {"critic_overrides": overrides}
+    return {
+        "critic_overrides": overrides,
+        "llm_quota_exhausted": quota_updates["llm_quota_exhausted"],
+        "call_counts": quota_updates["call_counts"]
+    }
 
 def trust_scorer(state: GraphState) -> dict:
     """
