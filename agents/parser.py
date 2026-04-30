@@ -100,7 +100,7 @@ def extract_critical_claims(citation_paragraphs: List[str], references_section: 
     {references_section}
     """
     
-    max_retries = 3
+    max_retries = 1
     base_delay = 2
     
     for attempt in range(max_retries):
@@ -134,17 +134,26 @@ def extract_critical_claims(citation_paragraphs: List[str], references_section: 
                 raise ValueError("LLM returned 0 claims.")
                 
         except Exception as e:
-            if classify_quota_error(e) == "RPD":
+            quota_type = classify_quota_error(e)
 
+            if quota_type == "RPD":
                 print(f"[Quota Exhaustion Failsafe Activated] Detected hard quota exhaustion in Parser: {e}")
                 updates["llm_quota_exhausted"] = True
                 break
-                
-            print(f"[Parser Agent Error] Attempt {attempt+1}/{max_retries} failed: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(base_delay ** (attempt + 1))
+
+            elif quota_type == "RPM":
+                if attempt == 0:
+                    updates["call_counts"]["retry_calls"] += 1
+                    print("[RPM throttle] Retrying once...")
+                    time.sleep(2)
+                    continue
+                else:
+                    print("[RPM throttle] Skipping further retries → fallback")
+                    break
+
             else:
-                print("[!] LLM extraction failed completely. Engaging regex fallback...")
+                print(f"[Parser Agent Error] Attempt {attempt+1}/{max_retries} failed: {e}")
+                break
                 
     return _fallback_extract(citation_paragraphs), updates
 
