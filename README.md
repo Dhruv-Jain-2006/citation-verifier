@@ -183,7 +183,6 @@ POST /audit
 ## 👨‍💻 Author
 
 **Dhruv Jain**
-Second-Year Engineering Student (AI/ML)
 
 ---
 
