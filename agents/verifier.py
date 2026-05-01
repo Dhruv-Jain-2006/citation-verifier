@@ -73,7 +73,7 @@ def evaluate_claims(claims: List[ExtractedClaim], evidence_list: List[RetrievedE
     {claims_text}
     """
     
-    max_retries = 3
+    max_retries = 1
     base_delay = 4
     
     for attempt in range(max_retries):
@@ -127,10 +127,13 @@ def evaluate_claims(claims: List[ExtractedClaim], evidence_list: List[RetrievedE
             break # Success
             
         except Exception as e:
-            if classify_quota_error(e) == "RPD":
+            quota_type = classify_quota_error(e)
+
+            if quota_type == "RPD":
                 print(f"[Quota Exhaustion Failsafe Activated] Detected hard quota exhaustion in Verifier: {e}")
                 updates["llm_quota_exhausted"] = True
-                # Add uncertainty scores for all remaining claims in this batch
+
+                # Assign uncertainty to remaining claims
                 for claim, _ in verifiable_claims:
                     verifications.append(VerificationScore(
                         claim_id=claim.claim_id,
@@ -141,22 +144,29 @@ def evaluate_claims(claims: List[ExtractedClaim], evidence_list: List[RetrievedE
                         confidence=0
                     ))
                 break
-                
-            if attempt < max_retries - 1:
-                time.sleep(base_delay ** (attempt + 1))
-                continue
-            
-            print(f"[Verifier Error] Failed LLM Batch execution: {e}")
-            for claim, _ in verifiable_claims:
-                verifications.append(VerificationScore(
-                    claim_id=claim.claim_id,
-                    support="unverifiable",
-                    evidence_strength="none",
-                    contradiction_detected=False,
-                    reasoning=f"LLM semantic parsing failed: {e}",
-                    confidence=0
-                ))
-            break
+
+            elif quota_type == "RPM":
+                if attempt == 0:
+                    print("[RPM throttle] Retrying once...")
+                    time.sleep(2)
+                    continue
+                else:
+                    print("[RPM throttle] Skipping further retries")
+                    break
+
+            else:
+                print(f"[Verifier Error] Failed LLM batch execution: {e}")
+
+                for claim, _ in verifiable_claims:
+                    verifications.append(VerificationScore(
+                        claim_id=claim.claim_id,
+                        support="unverifiable",
+                        evidence_strength="none",
+                        contradiction_detected=False,
+                        reasoning=f"LLM failure: {e}",
+                        confidence=0
+                    ))
+                break
 
     return verifications, updates
 

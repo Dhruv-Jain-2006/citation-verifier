@@ -4,7 +4,7 @@ from core.graph import citation_graph
 from agents.summarizer import generate_paper_summary
 from tools.pdf_extract import extract_pdf_data
 
-ENABLE_SUMMARIZER = False
+ENABLE_SUMMARIZER = True
 
 def download_sample_paper(filepath: str):
     print(f"Downloading sample paper to {filepath}...")

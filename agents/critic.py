@@ -72,7 +72,7 @@ def execute_critic_override(claims: List[ExtractedClaim],
     {claims_text}
     """
     
-    max_retries = 3
+    max_retries = 1
     base_delay = 4
     
     for attempt in range(max_retries):
@@ -128,17 +128,25 @@ def execute_critic_override(claims: List[ExtractedClaim],
             break # Success
             
         except Exception as e:
-            if classify_quota_error(e) == "RPD":
+            quota_type = classify_quota_error(e)
+
+            if quota_type == "RPD":
                 print(f"[Quota Exhaustion Failsafe Activated] Detected hard quota exhaustion in Critic: {e}")
                 updates["llm_quota_exhausted"] = True
                 break
 
-            if attempt < max_retries - 1:
-                time.sleep(base_delay ** (attempt + 1))
-                continue
-            
-            print(f"[Critic Error] Failed LLM Batch execution: {e}")
-            break
+            elif quota_type == "RPM":
+                if attempt == 0:
+                    print("[RPM throttle] Retrying once...")
+                    time.sleep(2)
+                    continue
+                else:
+                    print("[RPM throttle] Skipping further retries")
+                    break
+
+            else:
+                print(f"[Critic Error] Failed LLM batch execution: {e}")
+                break
 
     return overrides, updates
 
