@@ -6,7 +6,17 @@ import uuid
 import google.generativeai as genai
 
 from core.graph import citation_graph
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+load_dotenv()
+
+api_key = os.getenv("GOOGLE_API_KEY")
+
+if not api_key:
+    raise ValueError("GOOGLE_API_KEY is not set")
+
+genai.configure(api_key=api_key)
 
 # -------------------------
 # App Initialization
