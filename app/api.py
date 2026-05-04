@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import shutil
 import uuid
+import google.generativeai as genai
 
 from core.graph import citation_graph
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # -------------------------
 # App Initialization
