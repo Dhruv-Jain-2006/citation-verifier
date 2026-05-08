@@ -79,6 +79,10 @@ PDF Input
 
 ---
 
+## Live Site
+The site is live at https://scholarlearn-ai.netlify.app/
+---
+
 ## 🛠️ Installation
 
 ```bash
