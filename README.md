@@ -169,9 +169,9 @@ POST /audit
 
 ## ⚠️ Limitations
 
-* Depends on availability of external abstracts/APIs
-* LLM-based reasoning may introduce minor variability
-* Some citations may remain unverifiable due to missing data
+* Depends on availability of external abstracts/APIs.
+* LLM-based reasoning may introduce minor variability.
+* Some citations may remain unverifiable due to missing data.
 
 ---
 
